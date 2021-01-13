@@ -1,0 +1,4 @@
+example:
+    host: example.ipmi.domain.tld
+    username: ADMIN
+    password: ADMIN

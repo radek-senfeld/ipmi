@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Supermicro IPMI command-line interface
+#
+# Copyright (c) 2020-2021 Logic.cz. All rights reserved.
+# Author Radek Senfeld <rush@logic.cz>
+#
+
+import os
+import re
+import argparse
+import requests
+import subprocess
+import tempfile
+import yaml
+
+
+CONFIGFILE = ".ipmiconfig"
+
+DEFAULT_USERNAME = "ADMIN"
+DEFAULT_PASSWORD = "ADMIN"
+
+
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser(description="Supermicro IPMI command-line interface")
+	parser.add_argument("host", help="A host to connect to.")
+
+	args = parser.parse_args()
+
+	with open(os.path.expanduser(f"~/{CONFIGFILE}"), "rt") as config_file:
+		config = yaml.load(config_file)
+		host_config = config.get(args.host, None)
+
+	if not host_config:
+		raise NotImplementedError("Unknown host: {args.host}")
+
+	host, username, password = host_config.get("host"), host_config.get("username", DEFAULT_USERNAME), host_config.get("password", DEFAULT_PASSWORD)
+
+	#
+	with requests.Session() as session:
+		session.verify = False
+
+		#
+		login_url = f"https://{host}/cgi/login.cgi"
+		payload = {
+			"name": username,
+			"pwd": password,
+		}
+
+		r = session.post(login_url, payload)
+#		print(r.text)
+
+		# self.location = "../cgi/url_redirect.cgi?url_name=mainmenu";
+		m = re.search(r'self.location\ ?=\ ?"([^"]+)";', r.text)
+		if not m:
+			raise NotImplemented("Wrong credentials?")
+
+#		#mainmenu_url = m.group(1)
+#		mainmenu_url = f"https://{host}/cgi/url_redirect.cgi?url_name=mainmenu"
+#
+#		print(mainmenu_url)
+#
+#		r = session.get(mainmenu_url)
+#		print(r.text)
+
+		#
+#		sysinfo_url = f"https://{host}/cgi/url_redirect.cgi?url_name=sys_info"
+#
+#		r = session.get(sysinfo_url)
+#		print(r.text)
+
+		#
+#		session.cookies.update({
+#			"langSetFlag": "0",
+#			"language": "English",
+#			"mainpage": "system",
+#			"subpage": "sys_info"
+#		})
+
+		headers = {
+			"Referer": f"https://{host}/cgi/url_redirect.cgi?url_name=sys_info",
+		}
+
+		jnlp_url = f"https://{host}/cgi/url_redirect.cgi?url_name=ikvm&url_type=jwsk"
+
+		r = session.get(jnlp_url, headers=headers)
+
+		#print(session.cookies)
+		#print(r.text)
+
+	with tempfile.NamedTemporaryFile(prefix=host, suffix=".jnlp", buffering=0) as f:
+		#print(f.name)
+
+		f.write(r.text.encode())
+
+		subprocess.run(["javaws", "-jnlp", f.name, "-nosecurity", "-noupdate", "-Xnofork"])
